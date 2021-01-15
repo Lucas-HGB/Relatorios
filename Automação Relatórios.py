@@ -147,7 +147,7 @@ class Graph():
 
     def get_img(self):
         ## Baixa bytes da imagem do site do zabbix, utilizando cookies e headers definidos no início como autentição com o guardião
-        if "swap" not in self.name.lower() and "disk" not in self.name.lower():
+        if "swap" not in self.name.lower() and "disk" not in self.name.lower() and "grupo" not in self.name.lower():
             response = get('http://guardiao.workdb.com.br/chart2.php?graphid={}&from=now-1M%2FM&to=now-1M%2FM&profileIdx=web.graphs.filter&profileIdx2={}=um5etv25&screenid='.format(self.id, self.id), headers=headers, cookies=cookies, verify=False)
         else:
             response = get('http://guardiao.workdb.com.br/chart2.php?graphid={}&from=now-1M%2FM&to=now-1M%2FM&profileIdx=web.graphs.filter&profileIdx2={}&width=1274&height=280&_=um5ge3fh&screenid='.format(self.id, self.id), headers=headers, cookies=cookies, verify=False)
