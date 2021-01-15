@@ -1,40 +1,98 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*- 
-from PIL import Image
-from os import listdir, renames, remove, mkdir
+from os import mkdir
 from shutil import copyfile
 from pandas import read_excel
-from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
 from pyzabbix import ZabbixAPI
 from requests import get
 from io import BytesIO
 from PIL.Image import open as pil_open
+from time import mktime
+from Filter import Convert
+from openpyxl import load_workbook, Workbook
 
 
-global cookies, headers
+global cookies, headers, time_start, time_end, workbook
 
+## Seta tempo para ser usado como padrao para extrair valores de items
+time_end = int(mktime(datetime.now().timetuple()))
+time_start = time_end - 60 * 60 * 24 * 31
+
+
+try:
+	workbook = load_workbook("Item_Values.xlsx")
+except IOError:
+	workbook = Workbook()
+except Exception as excp:
+	print (excp)
+
+## Cookies e headers necessários para autenticar site do zabbix e baixar imagens dos gráficos
 cookies = {
-    'PHPSESSID': 'e8cacc181a6288bfa71036117a701147',
-    'tab': '1',
-    'zbx_sessionid': 'b6c2b1db0ebdaa57cf998a93a5d4605a',
+    'PHPSESSID': '3132f8a5d343f5a4f3b5beb6d8e6b26b',
+    'zbx_sessionid': 'b30820db970dbc0e7b7b1ad171bbd7ed',
 }
 
 headers = {
     'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
     'Upgrade-Insecure-Requests': '1',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.123 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+    'Origin': 'http://guardiao.workdb.com.br',
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.107 Safari/537.36',
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+    'Referer': 'http://guardiao.workdb.com.br/zabbix.php?action=dashboard.view',
     'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+    'If-None-Match': '"da6d308baf417abbe700c9ae5633c06a-gzip"',
+    'Content-Length': '0',
+    'X-Requested-With': 'XMLHttpRequest',
 }
 
 global situacao_servidores
 situacao_servidores = {}
 global zabbix
+
+## Loga na API do zabbix (usado para extrair id dos gráficos e também items/valores)
 zabbix = ZabbixAPI("http://guardiao.workdb.com.br")
 zabbix.login("lucas.hoeltgebaum", "workdb#2020")
-        
+
+class Item():
+
+    def __init__(self, id, servidor):
+        self.id = id
+        self.servidor = servidor
+        self.has_data = True
+        self.name = zabbix.item.get(itemids = self.id)[0]["name"]
+		
+    def extract_history(self):
+        ## Extrai histórico do item
+        history = zabbix.history.get(itemids=[self.id], time_from=time_start, time_till=time_end, output='extend', limit='10000000')
+        if not len(history):
+            history = zabbix.history.get(itemids=[self.id], time_from=time_start, time_till=time_end, output='extend', limit='10000000', history=0)
+        ## Separa apenas os valores do item em uma variável diferente
+        values = [float(f["value"]) for f in history]
+        ## Se valor não for nulo
+        if values != [] and values[0] != 0:
+            self.last = history[-1]["value"]
+            self.min = min(values)
+            self.max = max(values)
+            self.med = int((sum(values) / len(values)))
+            ## Passa valores para o filtro, que transforma Bytes em sua devida unidade maior
+            self.last, self.max, self.med, self.min = Convert(self.name, self.last, self.max, self.med, self.min)
+        ## Se valor for nulo
+        else:
+            self.has_data = False
+
+
+    def save(self):
+        ## Se valor não for nulo, item é salvo na planilha
+        if self.has_data:
+            sheet = Sheet(self.servidor)
+            sheet.basic_setup(self.id, self.name, self.last, self.max, self.med, self.min)
+        else:
+            pass
+
 class Graph():
 
     def __init__(self, id, servidor, graph_name):
@@ -42,6 +100,8 @@ class Graph():
         self.servidor = servidor
         self.name = graph_name
 
+
+    ## Remove caracteres inválidos que causam erros ao salvar arquivo em sistemas Windows
     def remove_invalid_char(self, name):
         words_blacklist = [
         "{$SID}", 
@@ -86,32 +146,37 @@ class Graph():
         return filtered_word
 
     def get_img(self):
+        ## Baixa bytes da imagem do site do zabbix, utilizando cookies e headers definidos no início como autentição com o guardião
         if "swap" not in self.name.lower() and "disk" not in self.name.lower():
             response = get('http://guardiao.workdb.com.br/chart2.php?graphid={}&from=now-1M%2FM&to=now-1M%2FM&profileIdx=web.graphs.filter&profileIdx2={}=um5etv25&screenid='.format(self.id, self.id), headers=headers, cookies=cookies, verify=False)
         else:
             response = get('http://guardiao.workdb.com.br/chart2.php?graphid={}&from=now-1M%2FM&to=now-1M%2FM&profileIdx=web.graphs.filter&profileIdx2={}&width=1274&height=280&_=um5ge3fh&screenid='.format(self.id, self.id), headers=headers, cookies=cookies, verify=False)
+        ## Converte bytes extraidos do site em uma imagem
         img = pil_open(BytesIO(response.content))
+        ## Filtra nome do gráfico e então salva a imagem
         name = self.remove_invalid_char(self.name)
         img.save(r"Relatórios\{}\{}.png".format(self.servidor, name))
-        situacao_servidores[self.servidor] = "Extracted Graphs"
         
 
 class Servidor():
     def __init__(self, servidor, id):
-        situacao_servidores[servidor] = "Initiated Process"
         self.servidor = servidor
         self.id = id
+        ## Extrai gráficos e items de respectivo servidor
         self.graphs = (zabbix.graph.get(hostids = self.id))
+        self.items = zabbix.item.get(hostids = self.id)
         try:
             mkdir("Relatórios")
         except FileExistsError:
             pass
         try:
+            ## Cria diretório do servidor em questão
             mkdir(r"Relatórios\{}".format(self.servidor))
         except FileExistsError:
             pass
 
     def move_model(self):
+        ## Move modelo do arquivo Word para o folder do servidor
         try:
             try:
                 copyfile(r"Modelos\{}\_Model.docx".format(self.servidor), r"Relatórios\{}\_Model.docx".format(self.servidor))
@@ -119,19 +184,43 @@ class Servidor():
                 print("Model {} not in correct folder!".format(self.servidor))
             except FileExistsError:
                 print("Model {} already in folder with relatório".format(self.servidor))
-            situacao_servidores[self.servidor] = "Moved Models"
         except Exception as excp:
             print(excp)
 
     def get_graphs(self):
         count = 0
+        ## Para cada gráfico extraído da API do zabbix, extrai a imagem do site do guardião
         for graph in self.graphs:
             count += 1
             graph_obj = Graph(id = graph["graphid"], servidor = self.servidor, graph_name = graph["name"])
             graph_obj.get_img()
             print(f"Saved {count}/{len(self.graphs)} images.")
 
+    def get_values(self):
+        count = 0
+        ## Para cada item extraído da API do zabbix, extrai os valores
+        for item_id in self.items:
+            count += 1
+            item = Item(item_id["itemid"], self.servidor)
+            item.extract_history() ; item.save()
+            print(f"Extracted {count}/{len(self.items)} item values.")
 
+            
+
+class Sheet():
+	def __init__(self, servidor):
+        ## Cria planilha para servidor especificado
+		try:
+			self.worksheet = workbook[servidor]
+		except:
+			self.worksheet = workbook.create_sheet(servidor)
+			self.worksheet = workbook[servidor]
+
+	def basic_setup(self, id, name, last, max, med, min):
+        ## Salva valores passados na planilha de devido servidor
+		rows = [("{}".format( name), "Last: {}".format(last), "Max: {}".format(max), "Med: {}".format(med), "Min: {}".format(min))]
+		for f in rows:
+			self.worksheet.append(f)
 
 
 def START(type = None, name = None, id = None):
@@ -140,20 +229,22 @@ def START(type = None, name = None, id = None):
             servidores_excel = read_excel("Servidores.xlsx", sheet_name = "WorkDB")
         elif type.lower() == "optidata":
             servidores_excel = read_excel("Servidores.xlsx", sheet_name = "Optidata")
-        for server in servidores_excel["SERVER"]:
-            situacao_servidores[server] = "Not Started"
-        for server, id in zip(servidores_excel["SERVER"], servidores_excel["ID"]):
-            print(f"\n\nStarting data collection from server {server} with ID {id}")
+        ## Para cada servidor especificado na planilha, roda todo o processo
+        for server, id, count in zip(servidores_excel["SERVER"], servidores_excel["ID"], range(len(servidores_excel["SERVER"]))):
+            print("\n\nProcessed {}/{} Servers.".format(count, len(servidores_excel["SERVER"])))
+            print(f"Starting data collection from server {server} with ID {id}\n")
             Servidor_obj = Servidor(server, id)
             Servidor_obj.move_model()
             Servidor_obj.get_graphs()
-            print("\n{}".format(Counter(situacao_servidores.values())))
+            Servidor_obj.get_values()
+            
             
     elif type == None:
         print(f"\n\nStarting data collection from server {name} with ID {id}")
         Servidor_obj = Servidor(name, id)
         Servidor_obj.move_model()
         Servidor_obj.get_graphs()
+        Servidor_obj.get_values()
 
 exit = False
 
@@ -187,5 +278,5 @@ while not exit:
     else:
         print("Por favor insira um valor válido!")
 
-
-
+## Salva planilha com valores extraídos dos items
+workbook.save(r"Item_Values.xlsx")
