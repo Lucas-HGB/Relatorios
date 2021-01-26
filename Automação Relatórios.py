@@ -55,7 +55,7 @@ global zabbix
 
 ## Loga na API do zabbix (usado para extrair id dos gráficos e também items/valores)
 zabbix = ZabbixAPI("http://guardiao.workdb.com.br")
-zabbix.login("USUARIO", "SENHA")
+zabbix.login("lucas.hoeltgebaum", "workdb#2020")
 
 class Item():
 
@@ -266,10 +266,10 @@ while not exit:
     elif opcao == 3:
         print("Nome:")
         nome = input()
-	print("ID:")
+        print("ID:")
         try:
             id = int(input())
-	    START(type = None, name = nome.upper(), id = id)
+            START(type = None, name = nome.upper(), id = id)
         except ValueError:
             pass
         
