@@ -28,25 +28,25 @@ except IOError:
 except Exception as excp:
 	print (excp)
 
-## Cookies e headers necessários para autenticar site do zabbix e baixar imagens dos gráficos
+## Cookies e headers necessários para autenticar site do zabbix e baixar imagens dos gráficos (Removidos do Github por motivos de privacidade.
 cookies = {
-    'PHPSESSID': '3132f8a5d343f5a4f3b5beb6d8e6b26b',
-    'zbx_sessionid': 'b30820db970dbc0e7b7b1ad171bbd7ed',
+    'PHPSESSID': '',
+    'zbx_sessionid': '',
 }
 
 headers = {
-    'Connection': 'keep-alive',
-    'Cache-Control': 'max-age=0',
-    'Upgrade-Insecure-Requests': '1',
-    'Origin': 'http://guardiao.workdb.com.br',
-    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.107 Safari/537.36',
-    'Accept': 'application/json, text/javascript, */*; q=0.01',
-    'Referer': 'http://guardiao.workdb.com.br/zabbix.php?action=dashboard.view',
-    'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
-    'If-None-Match': '"da6d308baf417abbe700c9ae5633c06a-gzip"',
-    'Content-Length': '0',
-    'X-Requested-With': 'XMLHttpRequest',
+    'Connection': '',
+    'Cache-Control': '',
+    'Upgrade-Insecure-Requests': '',
+    'Origin': '',
+    'Content-Type': '',
+    'User-Agent': '',
+    'Accept': '',
+    'Referer': '',
+    'Accept-Language': '',
+    'If-None-Match': '',
+    'Content-Length': '',
+    'X-Requested-With': '',
 }
 
 global situacao_servidores
@@ -55,7 +55,7 @@ global zabbix
 
 ## Loga na API do zabbix (usado para extrair id dos gráficos e também items/valores)
 zabbix = ZabbixAPI("http://guardiao.workdb.com.br")
-zabbix.login("lucas.hoeltgebaum", "workdb#2020")
+zabbix.login("USUARIO", "SENHA")
 
 class Item():
 
@@ -78,7 +78,7 @@ class Item():
             self.min = min(values)
             self.max = max(values)
             self.med = int((sum(values) / len(values)))
-            ## Passa valores para o filtro, que transforma Bytes em sua devida unidade maior
+            ## Passa valores para o filtro, que transforma Bytes em sua devida unidade
             self.last, self.max, self.med, self.min = Convert(self.name, self.last, self.max, self.med, self.min)
         ## Se valor for nulo
         else:
@@ -266,13 +266,13 @@ while not exit:
     elif opcao == 3:
         print("Nome:")
         nome = input()
+	print("ID:")
         try:
-            print("ID:")
-            id = input()
+            id = int(input())
+	    START(type = None, name = nome.upper(), id = id)
         except ValueError:
-            print("Insira um valor numérico válido para um único Host do guardião")
-            id = input()
-        START(type = None, name = nome.upper(), id = id)
+            pass
+        
     elif opcao == 4:
         break
     else:
