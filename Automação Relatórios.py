@@ -55,7 +55,7 @@ global zabbix
 
 ## Loga na API do zabbix (usado para extrair id dos gráficos e também items/valores)
 zabbix = ZabbixAPI("http://guardiao.workdb.com.br")
-zabbix.login("lucas.hoeltgebaum", "workdb#2020")
+zabbix.login("USER", "PASSWORD")
 
 class Item():
 
